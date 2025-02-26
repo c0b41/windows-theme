@@ -1,0 +1,31 @@
+{
+  "name": "windows-theme",
+  "version": "0.0.0",
+  "description": "",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "napi build --platform dist"
+  },
+  "napi": {
+    "name": "windows-theme",
+    "triples": {
+      "defaults": false,
+      "additional": [
+        "aarch64-pc-windows-msvc",
+        "x86_64-pc-windows-msvc",
+        "i686-pc-windows-msvc"
+      ]
+    }
+  },
+  "keywords": [
+    "napi",
+    "theme",
+    "windows"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/c0b41/windows-theme#readme",
+  "devDependencies": {
+    "@napi-rs/cli": "^2.18.4"
+  }
+}
