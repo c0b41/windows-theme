@@ -11,9 +11,7 @@ crate-type = ["cdylib"]
 napi-build = "2.0.1"
 
 [dependencies]
-napi = "2"
-napi-derive = "2"
-tokio = { version = "1", features = ["full"] }
-winreg = "0.10"
-winapi = { version = "0.3", features = ["winuser", "minwindef"] }
-async-trait = "0.1"
+winapi = { version = "0.3", features = ["winuser", "winreg"] }
+winreg = "0.8"
+napi = "2.0.0"
+napi-derive = "2.0.0"

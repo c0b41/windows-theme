@@ -1,188 +1,92 @@
-use napi::{bindgen_prelude::*, Error, Status};
-use napi_derive::napi;
 use std::ptr::null_mut;
-use tokio::runtime::Runtime;
-use winapi::shared::minwindef::{LPARAM, WPARAM};
-use winapi::um::winuser::{
-    SendMessageTimeoutW, HWND_BROADCAST, WM_SETTINGCHANGE, SMTO_ABORTIFHUNG,
-    SystemParametersInfoW, SPI_SETCLIENTAREAANIMATION, SPIF_UPDATEINIFILE, SPIF_SENDCHANGE,
-};
-use winreg::enums::*;
-use winreg::RegKey;
-
-// Define an enum for the theme
-#[napi]
-#[derive(Debug)]
-pub enum Theme {
-    Light,
-    Dark,
-}
-
-impl From<u32> for Theme {
-    fn from(value: u32) -> Self {
-        match value {
-            1 => Theme::Light,
-            0 => Theme::Dark,
-            _ => panic!("Invalid theme value"),
-        }
-    }
-}
-
-impl From<String> for Theme {
-    fn from(value: String) -> Self {
-        match value.to_lowercase().as_str() {
-            "light" => Theme::Light,
-            "dark" => Theme::Dark,
-            _ => panic!("Invalid theme value"),
-        }
-    }
-}
-
-impl From<Theme> for String {
-    fn from(theme: Theme) -> Self {
-        match theme {
-            Theme::Light => "light".to_string(),
-            Theme::Dark => "dark".to_string(),
-        }
-    }
-}
+use winapi::shared::minwindef::LPARAM;
+use winapi::um::winuser::{SendMessageTimeoutW, HWND_BROADCAST, SMTO_ABORTIFHUNG, WM_SETTINGCHANGE};
+use winreg::{enums::*, RegKey};
+use napi_derive::napi;
 
 #[napi]
-fn get_theme(_env: Env) -> AsyncTask<GetThemeTask> {
-    AsyncTask::new(GetThemeTask)
-}
+pub fn theme_toggle() -> String {
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    let key_path = "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize";
+    let value_name_apps = "AppsUseLightTheme";
+    let value_name_system = "SystemUsesLightTheme";
+    let value_name_accent = "ColorPrevalence";
+    let backup_value_name = "ColorPrevalenceBackup";
 
-struct GetThemeTask;
+    let key = hkcu.open_subkey_with_flags(key_path, KEY_READ | KEY_WRITE)
+        .unwrap_or_else(|_| panic!("Failed to open registry key"));
 
-#[async_trait::async_trait(?Send)]
-impl Task for GetThemeTask {
-    type Output = String;
-    type JsValue = String;
+    let current_value_system: u32 = key.get_value(value_name_system)
+        .unwrap_or(1);
+    let mut current_value_apps: u32 = key.get_value(value_name_apps)
+        .unwrap_or(1);
+    let current_value_accent: u32 = key.get_value(value_name_accent)
+        .unwrap_or(1);
 
-    fn compute(&mut self) -> Result<Self::Output> {
-        // Use a Tokio runtime to run the async task
-        let runtime = Runtime::new().unwrap();
-        runtime.block_on(async {
-            tokio::task::spawn_blocking(|| {
-                let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-                let key_path = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize";
-                // Open the registry key
-                let key = hkcu.open_subkey_with_flags(key_path, KEY_READ).map_err(|_| {
-                    Error::new(
-                        Status::GenericFailure,
-                        "Failed to open registry key".to_string(),
-                    )
-                })?;
-                // Query the current value of AppsUseLightTheme
-                let apps_use_light_theme: u32 = key.get_value("AppsUseLightTheme").map_err(|_| {
-                    Error::new(
-                        Status::GenericFailure,
-                        "Failed to read AppsUseLightTheme".to_string(),
-                    )
-                })?;
-                // Convert the numeric value to the Theme enum and then to a string
-                let theme: Theme = apps_use_light_theme.into();
-                Ok::<String, Error>(theme.into())
-            })
-            .await
-            .map_err(|_| {
-                Error::new(
-                    Status::GenericFailure,
-                    "Failed to execute async task".to_string(),
-                )
-            })?
-        })
+    if current_value_apps != current_value_system {
+        current_value_apps = current_value_system;
+        key.set_value(value_name_apps, &current_value_apps)
+            .unwrap();
     }
 
-    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
-        Ok(output)
+    let new_theme = if current_value_system == 1 { 0u32 } else { 1u32 };
+
+    if new_theme == 1 {
+        key.set_value(backup_value_name, &current_value_accent)
+            .unwrap();
+        if current_value_accent == 1 {
+            key.set_value(value_name_accent, &0u32)
+                .unwrap();
+        }
+    } else {
+        if let Ok(stored_accent_value) = key.get_value::<u32, _>(backup_value_name) {
+            key.set_value(value_name_accent, &stored_accent_value)
+                .unwrap();
+        }
+    }
+
+    key.set_value(value_name_system, &new_theme)
+        .unwrap();
+    key.set_value(value_name_apps, &new_theme)
+        .unwrap();
+
+    // Broadcast theme change
+    let message = "ImmersiveColorSet";
+    let wide_message: Vec<u16> = message.encode_utf16().chain(std::iter::once(0)).collect();
+    unsafe {
+        SendMessageTimeoutW(
+            HWND_BROADCAST,
+            WM_SETTINGCHANGE,
+            0,
+            wide_message.as_ptr() as LPARAM,
+            SMTO_ABORTIFHUNG,
+            50,
+            null_mut(),
+        );
+    }
+
+    if new_theme == 1 {
+        "light".to_string()
+    } else {
+        "dark".to_string()
     }
 }
 
 #[napi]
-fn set_theme(_env: Env, theme: String) -> AsyncTask<SetThemeTask> {
-    AsyncTask::new(SetThemeTask { theme })
-}
+pub fn get_theme() -> String {
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    let key_path = "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize";
+    let value_name_system = "SystemUsesLightTheme";
 
-struct SetThemeTask {
-    theme: String,
-}
+    let key = hkcu.open_subkey_with_flags(key_path, KEY_READ)
+        .unwrap_or_else(|_| panic!("Failed to open registry key"));
 
-#[async_trait::async_trait(?Send)]
-impl Task for SetThemeTask {
-    type Output = ();
-    type JsValue = ();
+    let current_value: u32 = key.get_value(value_name_system)
+        .unwrap_or(1);
 
-    fn compute(&mut self) -> Result<Self::Output> {
-        // Use a Tokio runtime to run the async task
-        let runtime = Runtime::new().unwrap();
-        runtime.block_on(async {
-            let theme = self.theme.clone();
-            tokio::task::spawn_blocking(move || {
-                // Convert the input string to the Theme enum
-                let theme: Theme = theme.into();
-                let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-                let key_path = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize";
-                // Map the enum to the corresponding registry value
-                let new_value: u32 = match theme {
-                    Theme::Light => 1,
-                    Theme::Dark => 0,
-                };
-                // Open the registry key
-                let key = hkcu.open_subkey_with_flags(key_path, KEY_READ | KEY_SET_VALUE).map_err(|_| {
-                    Error::new(
-                        Status::GenericFailure,
-                        "Failed to open registry key".to_string(),
-                    )
-                })?;
-                // Update AppsUseLightTheme and SystemUsesLightTheme
-                key.set_value("AppsUseLightTheme", &new_value).map_err(|_| {
-                    Error::new(
-                        Status::GenericFailure,
-                        "Failed to update AppsUseLightTheme".to_string(),
-                    )
-                })?;
-                key.set_value("SystemUsesLightTheme", &new_value).map_err(|_| {
-                    Error::new(
-                        Status::GenericFailure,
-                        "Failed to update SystemUsesLightTheme".to_string(),
-                    )
-                })?;
-                // Notify the system of the change using SystemParametersInfoW
-                unsafe {
-                    SystemParametersInfoW(
-                        SPI_SETCLIENTAREAANIMATION, // Action: Set client area animation
-                        0,                          // No additional parameter
-                        null_mut(),                 // No additional data
-                        SPIF_UPDATEINIFILE | SPIF_SENDCHANGE, // Flags: Update INI file and send change notification
-                    );
-                }
-                // Broadcast WM_SETTINGCHANGE to all top-level windows
-                unsafe {
-                    let setting_change_message = "ImmersiveColorSet\0".encode_utf16().chain(std::iter::once(0)).collect::<Vec<u16>>();
-                    SendMessageTimeoutW(
-                        HWND_BROADCAST,          // Send to all top-level windows
-                        WM_SETTINGCHANGE,        // Message: Setting change
-                        0 as WPARAM,             // No additional parameter
-                        setting_change_message.as_ptr() as LPARAM, // Setting name
-                        SMTO_ABORTIFHUNG,        // Timeout if the window is hung
-                        5000,                    // Timeout in milliseconds
-                        null_mut(),              // No return value needed
-                    );
-                }
-                Ok(())
-            })
-            .await
-            .map_err(|_| {
-                Error::new(
-                    Status::GenericFailure,
-                    "Failed to execute async task".to_string(),
-                )
-            })?
-        })
-    }
-
-    fn resolve(&mut self, _env: Env, _output: Self::Output) -> Result<Self::JsValue> {
-        Ok(())
+    if current_value == 1 {
+        "light".to_string()
+    } else {
+        "dark".to_string()
     }
 }
