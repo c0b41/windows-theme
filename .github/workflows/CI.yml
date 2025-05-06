@@ -101,7 +101,7 @@ jobs:
           if-no-files-found: error
   publish:
     name: Publish
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     needs:
       - build
     steps:
@@ -123,7 +123,7 @@ jobs:
         run: ls -R ./npm
         shell: bash
       - name: Build output
-        run: yarn run build
+        run: yarn build
         shell: bash
       - name: Publish
         run: |
