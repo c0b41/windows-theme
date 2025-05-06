@@ -1,0 +1,19 @@
+{
+  "name": "@c0b41/windows-theme-win32-x64-msvc",
+  "version": "1.0.0",
+  "os": [
+    "win32"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "main": "windows-theme.win32-x64-msvc.node",
+  "files": [
+    "windows-theme.win32-x64-msvc.node"
+  ],
+  "license": "MIT",
+  "repository": "https://github.com/c0b41/windows-theme/tree/master/npm/win32-x64-msvc",
+  "engines": {
+    "node": ">= 10"
+  }
+}
