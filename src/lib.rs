@@ -1,4 +1,3 @@
-use std::ptr::null_mut;
 use std::thread::sleep;
 use std::time::Duration;
 use winapi::shared::minwindef::{LPARAM, WPARAM};
@@ -20,8 +19,8 @@ fn broadcast_theme_change() {
         SendMessageTimeoutW(
             HWND_BROADCAST,
             WM_SETTINGCHANGE,
-            WPARAM(0),
-            LPARAM(wide.as_ptr() as isize),
+            0 as WPARAM,
+            wide.as_ptr() as LPARAM,
             SMTO_ABORTIFHUNG,
             5000,
             &mut result as *mut usize,
@@ -30,8 +29,8 @@ fn broadcast_theme_change() {
         SendMessageTimeoutW(
             HWND_BROADCAST,
             WM_THEMECHANGED,
-            WPARAM(0),
-            LPARAM(0),
+            0 as WPARAM,
+            0 as LPARAM,
             SMTO_ABORTIFHUNG,
             5000,
             &mut result as *mut usize,
